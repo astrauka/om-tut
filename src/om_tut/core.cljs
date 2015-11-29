@@ -49,6 +49,13 @@
               (dom/span nil (display-name contact))
               (dom/button #js {:onClick (fn [e] (put! delete @contact))} "Delete")))))
 
+(defn add-contact [data owner]
+  (let [new-contact (-> (om/get-node owner "new-contact")
+                        .-value
+                        parse-contact)]
+    (when new-contact
+      (om/transact! data :contacts #(conj % new-contact)))))
+
 (defn contacts-view [data owner]
   (reify
     om/IInitState
@@ -63,12 +70,15 @@
                               (fn [xs] (vec (remove #(= contact %) xs))))
                 (recur))))))
     om/IRenderState
-    (render-state [this {:keys [delete]}]
+    (render-state [this state]
       (dom/div nil
                (dom/h2 nil "Contact list")
                (apply dom/ul nil
                       (om/build-all contact-view (:contacts data)
-                                    {:init-state {:delete delete}}))))))
+                                    {:init-state state}))
+               (dom/div nil
+                        (dom/input #js {:type "text" :ref "new-contact"})
+                        (dom/button #js {:onClick #(add-contact data owner)} "Add contact"))))))
 
 (defn stripe [text bgc]
   (let [st #js {:backgroundColor bgc}]
