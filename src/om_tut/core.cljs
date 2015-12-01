@@ -3,6 +3,16 @@
             [om.dom :as dom :include-macros true]
             [clojure.string :as string]))
 
+(extend-type string
+  ICloneable
+  (-clone [s] (js/String. s)))
+
+(extend-type js/String
+  ICloneable
+  (-clone [s] (js/String. s))
+  om/IValue
+  (-value [s] (str s)))
+
 (enable-console-print!)
 
 (def app-state
@@ -22,6 +32,38 @@
      :6946 "The Structure and Interpretation of Classical Mechanics"
      :1806 "Linear Algebra"}}))
 
+(defn display [show]
+  (if show
+    #js {}
+    #js {:display "none"}))
+
+(defn handle-change [e text owner]
+  (om/transact! text (fn [_] (.. e -target -value))))
+
+(defn commit-change [text owner]
+  (om/set-state! owner :editing false))
+
+(defn editable [text owner]
+  (reify
+    om/IInitState
+    (init-state [_]
+      {:editing false})
+    om/IRenderState
+    (render-state [_ {:keys [editing]}]
+      (dom/li nil
+              (dom/span #js {:style (display (not editing))} (om/value text))
+              (dom/input
+               #js {:style (display editing)
+                    :value (om/value text)
+                    :onChange #(handle-change % text owner)
+                    :onKeyDown #(when (= (.-key %) "Enter")
+                                  (commit-change text owner))
+                    :onBlur #(commit-change text owner)})
+              (dom/button
+               #js {:style (display (not editing))
+                    :onClick #(om/set-state! owner :editing true)}
+               "Edit")))))
+
 (defn middle-name [{:keys [middle middle-initial]}]
   (cond
     middle (str " " middle)
@@ -29,14 +71,6 @@
 
 (defn display-name [{:keys [first last] :as contact}]
   (str last ", " first (middle-name contact)))
-
-(defmulti entry-view (fn [person _] (:type person)))
-
-(defmethod entry-view :student
-  [person owner] (student-view person owner))
-
-(defmethod entry-view :professor
-  [person owner] (professor-view person owner))
 
 (defn student-view [student owner]
   (reify
@@ -52,7 +86,15 @@
               (dom/div nil (display-name professor))
               (dom/label nil "Classes")
               (apply dom/ul nil
-                     (map #(dom/li nil %) (:classes professor)))))))
+                     (map #(dom/li nil (om/value %)) (:classes professor)))))))
+
+(defmulti entry-view (fn [person _] (:type person)))
+
+(defmethod entry-view :student
+  [person owner] (student-view person owner))
+
+(defmethod entry-view :professor
+  [person owner] (professor-view person owner))
 
 (defn people [data]
   (->> data
@@ -72,8 +114,20 @@
                (apply dom/ul nil
                       (om/build-all entry-view (people data)))))))
 
+(defn classes-view [data owner]
+  (reify
+    om/IRender
+    (render [_]
+      (dom/div #js {:id "classes"}
+               (dom/h2 nil "Classes")
+               (apply dom/ul nil
+                      (om/build-all editable (vals (:classes data))))))))
+
 (om/root registry-view app-state
          {:target (. js/document (getElementById "registry"))})
+
+(om/root classes-view app-state
+         {:target (. js/document (getElementById "classes"))})
 
 (defn on-js-reload []
   ;; optionally touch your app-state to force rerendering depending on
